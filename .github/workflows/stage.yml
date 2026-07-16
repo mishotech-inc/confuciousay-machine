@@ -1,0 +1,40 @@
+name: stage
+on:
+  schedule:
+    - cron: "0 10 * * 0"   # Sunday 3am PT: render the upcoming week
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Start date YYYY-MM-DD (default today PT)"
+        required: false
+      days:
+        description: "Days to render"
+        default: "8"
+concurrency:
+  group: stage
+permissions:
+  contents: write
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+          pip install pillow matplotlib
+      - name: Render window
+        run: |
+          START="${{ inputs.start }}"
+          if [ -z "$START" ]; then START=$(TZ=America/Los_Angeles date +%F); fi
+          python3 render.py --start "$START" --days "${{ inputs.days || '8' }}"
+      - name: Commit media, pin manifest to the media commit
+        run: |
+          git config user.name "confuciousay-machine"
+          git config user.email "actions@users.noreply.github.com"
+          git add media/ launch-carousels/ || true
+          git diff --cached --quiet || git commit -m "media: render $(date -u +%F)"
+          SHA=$(git rev-parse HEAD)
+          python3 -c "import json; json.dump({'media_sha': '$SHA', 'generated_at': '$(date -u +%FT%TZ)'}, open('manifest.json','w'), indent=1)"
+          git add manifest.json
+          git diff --cached --quiet || git commit -m "manifest: pin media to $SHA"
+          git pull --rebase && git push

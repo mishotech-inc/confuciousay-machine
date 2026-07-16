@@ -1,0 +1,18 @@
+name: refresh-token
+on:
+  schedule:
+    - cron: "0 8 1 * *"    # monthly; token lives 60 days, so this always renews in time
+  workflow_dispatch:
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh the 60-day Instagram token and rotate the secret
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          OLD: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          NEW=$(curl -sf "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${OLD}" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          if [ -z "$NEW" ]; then echo "refresh failed"; exit 1; fi
+          gh secret set IG_ACCESS_TOKEN --repo "${{ github.repository }}" --body "$NEW"
+          echo "token rotated"

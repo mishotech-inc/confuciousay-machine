@@ -1,0 +1,40 @@
+name: publish
+on:
+  schedule:
+    - cron: "0 15 * * *"   # 8am PT (PDT). Nov 1: change to 16.
+    - cron: "0 19 * * *"   # 12pm PT.     Nov 1: change to 20.
+    - cron: "0 1 * * *"    # 6pm PT.      Nov 1: change to 2.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print payload, do not post)"
+        type: boolean
+        default: true
+concurrency:
+  group: publish
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install requests
+      - name: Publish due slot
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            python3 publish.py --dry-run
+          else
+            python3 publish.py
+          fi
+      - name: Commit post log
+        run: |
+          git config user.name "confuciousay-machine"
+          git config user.email "actions@users.noreply.github.com"
+          git add logs/
+          git diff --cached --quiet || (git commit -m "log: publish $(date -u +%FT%TZ)" && git pull --rebase && git push)
